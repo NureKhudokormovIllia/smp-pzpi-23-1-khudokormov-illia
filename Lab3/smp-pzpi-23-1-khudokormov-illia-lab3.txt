@@ -28,11 +28,6 @@
  
  
 
-
-
-
-
-
  
 Виконав:                                                                              Перевірили: 
 гр.ПЗПІ-23-1                                                                       Сокорчук Ігор 
@@ -82,9 +77,6 @@ require_once 'functions.php';
     <input type="number" name="product_<?= $id ?>" min="0" value="0" class="count-input">
     <input type="submit" name="submit" value="Add to cart">
 </form>
-Приклад товару:
- 
-Рисунок 2.1 – Сторінка товарів
 Обробка даних:
 if (isset($_POST['submit'])) {
     // Перевірка кількості товарів
@@ -92,15 +84,10 @@ if (isset($_POST['submit'])) {
         addCartItem([...]);
     }
 }
-
-
 2.3 Робота з кошиком (cart.php)
 Функціонал:
 •	Перегляд товарів у кошику.
 •	Видалення товарів або очищення кошика.
-Приклад кошика:
- 
-Рисунок 2.2 – Сторінка кошику
 Код для видалення товару:
 if ($_GET['action'] === 'remove' && isset($_GET['id'])) {
     removeCartItem((int)$_GET['id']);
@@ -114,10 +101,6 @@ if ($_GET['action'] === 'remove' && isset($_GET['id'])) {
 <h4>Як з нами зв'язатися:</h4>
 <p>Телефон: +38 (050) 123-45-67</p>
 <p>Email: illia.khudokormov@nure.ua</p>
- 
-Рисунок 2.3 – Сторінка “Про нас”
-
-
 2.5 Функції для роботи з кошиком (functions.php)
 Основні функції:
 1.	getCartItems() — отримує товари з сесії.
@@ -149,8 +132,7 @@ Footer:
     <span class="separator">|</span>
     <a href="cart.php"><i class="fas fa-shopping-cart"></i> Cart</a>
 </div>
- 
-Рисунок 2.4 – Сторінка з футером та хедером 
+ 
 ВИСНОВОК 
  
 У процесі виконання лабораторної роботи №3 було розроблено вебсайт інтернет-магазину з використанням вбудованого сервера PHP. Під час роботи було засвоєно навички обробки HTTP-запитів, підключення зовнішніх файлів за допомогою конструкції include, створення та обробки HTML-форм із передачею даних методом POST. Окрім цього, було реалізовано збереження даних користувача в сесії з використанням суперглобального масиву $_SESSION, що дозволило забезпечити підтримку стану кошика під час роботи користувача з сайтом. Також було реалізовано збереження інформації про товари в базі даних SQLite, що дало можливість організувати зручне отримання даних про асортимент через SQL-запити та забезпечити гнучкість у керуванні товарною базою. 
@@ -165,8 +147,29 @@ Footer:
 7.	Images / istockphoto. URL: https://www.istockphoto.com/ (дата звернення 10.05.25)
  
 ДОДАТОК А
-Код програми:
+Відеозапис
+Відеозапис презентації результатів лабораторної роботи: https://youtu.be/OEYdQj3t1VY
+Хронологічний опис відеозапису:
+00:00 – Демонстрація зробленого веб-сайту
+01:57 – Як працює основна сторінка index.php
+10:34 – Як працює сторінка кошику cart.php
+15:34 – Як працює header, footer
+ 
+ДОДАТОК Б
+Графічні матеріали
+ 
+Рисунок 2.1 – Сторінка товарів
+ 
+Рисунок 2.2 – Сторінка кошику
+ 
+Рисунок 2.3 – Сторінка “Про нас”
+ 
+Рисунок 2.4 – Сторінка з футером та хедером
+ 
+ДОДАТОК В
+Програмний Код
 index.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab3/smp-pzpi-23-1-khudokormov-illia-lab3-code/index.php
 1	<?php
 2	session_start();
 3	
@@ -245,6 +248,7 @@ index.php:
 76	</div>
 77	<?php include 'tpl/footer.phtml'; ?>
 functions.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab3/smp-pzpi-23-1-khudokormov-illia-lab3-code/functions.php
 1	<?php
 2	require_once 'config.php';
 3	
@@ -374,6 +378,7 @@ functions.php:
 127	}
 128	?> 
 config.php
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab3/smp-pzpi-23-1-khudokormov-illia-lab3-code/config.php
 1	<?php
 2	define('DB_FILE', __DIR__ . '/data/shop.db');
 3	
@@ -553,6 +558,7 @@ cart.php
 176	    </div>
 177	<?php include 'tpl/footer.phtml'; ?> 
 about.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab3/smp-pzpi-23-1-khudokormov-illia-lab3-code/about.php
 1	<?php
 2	session_start();
 3	
@@ -592,6 +598,7 @@ about.php:
 37	
 38	<?php include 'tpl/footer.phtml'; ?>
 header.phtml:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab3/smp-pzpi-23-1-khudokormov-illia-lab3-code/tpl/header.phtml
 1	<!DOCTYPE html>
 2	<html lang="uk">
 3	<head>
@@ -731,8 +738,8 @@ header.phtml:
 137	    </div>
 138	</body>
 139	</html>
- 
 footer.phtml:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab3/smp-pzpi-23-1-khudokormov-illia-lab3-code/tpl/footer.phtml
 1	<html>
 2		<body>
 3			<div class="footer">
