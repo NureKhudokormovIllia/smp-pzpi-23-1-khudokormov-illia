@@ -1,0 +1,479 @@
+﻿Міністерство освіти та науки України
+
+Харківський національний університет радіоелектроніки
+
+
+
+
+
+Кафедра програмної інженерії
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ЗВІТ
+
+ПРО ЛАБОРАТОРНУ РАБОТУ №2
+
+з дисципліни «Скриптові мови програмування»
+
+
+
+
+
+
+
+
+Виконав:	Перевірив:
+
+ст. гр. ПЗПІ-23-1	ст. викл. каф. ПІ
+
+Худокормов І.В.	Сокорчук І.П.
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Харків, 2025 р. 
+1	ОПИС ВИМОГ
+1.1	Мета роботи
+Метою лабораторної роботи є створення консольної програми на мові PHP, яка імітує роботу продовольчого магазину «Весна». Програма дозволяє користувачу вибирати товари, формувати кошик, переглядати підсумковий рахунок та налаштовувати свій профіль. Основна задача — реалізувати зручну взаємодію з користувачем через текстове меню та обробку введених даних.
+1.2 Хід роботи
+Після запуску програми на екрані з’являється головне меню з можливими діями:
+
+################################
+# ПРОДОВОЛЬЧИЙ МАГАЗИН "ВЕСНА" #
+################################
+1 Вибрати товари
+2 Отримати підсумковий рахунок
+3 Налаштувати свій профіль
+0 Вийти з програми
+Введіть команду: _
+
+Програма зчитує введене значення за допомогою функції:
+38 $command = trim(fgets(STDIN));
+
+І далі обробляє його через оператор switch:
+
+40  switch ($command) {
+41    case '0':
+42        exit(0);
+43    case '1':
+44        $this->selectProducts();
+45        break;
+46    case '2':
+47        $this->showFinalBill();
+48        break;
+49    case '3':
+50        $this->configureProfile();
+51        break;
+52    default:
+53        print "ПОМИЛКА! Введіть правильну команду\n";
+54       $this->showMainMenuOptions();
+55        break;
+56  }
+
+
+Після введення команди «1», користувачу виводиться список доступних продуктів:
+
+№  НАЗВА                 ЦІНА
+1  Молоко пастеризоване  12
+2  Хліб чорний           9
+3  Сир білий             21
+4  Сметана 20%           25
+5  Кефір 1%              19
+6  Вода газована         18
+7  Печиво "Весна"        14
+   -----------
+0  ПОВЕРНУТИСЯ
+
+Список виводиться через метод showProductsList():
+
+176 private function showProductsList()
+177 {
+178    printf("%-2s %-27s %-4s\n", "№", "НАЗВА", "ЦІНА");
+179    foreach ($this->products as $id => $product) {
+180        printf("%-2d %-27s %-4d\n", $id, $product['name'], $product['price']);
+181    }
+182    print "   -----------\n";
+183    print "0  ПОВЕРНУТИСЯ\n";
+184 }
+
+Після вибору товару користувач вводить кількість одиниць:
+
+Виберіть товар: 2
+Вибрано: Хліб чорний
+Введіть кількість, штук: 1
+У КОШИКУ:
+НАЗВА                 КІЛЬКІСТЬ
+Хліб чорний           1
+
+
+Товар додається в масив $cart:
+
+111 $this->cart[$productNumber] = [
+112    'name' => $selectedProduct['name'],
+113    'price' => $selectedProduct['price'],
+114    'quantity' => $quantity
+115 ];
+
+Якщо ввести кількість 0, товар видаляється з кошика:
+
+Виберіть товар: 2
+Вибрано: Хліб чорний
+Введіть кількість, штук: 0
+ВИДАЛЯЮ З КОШИКА
+КОШИК ПОРОЖНІЙ
+
+Після введення команди «2» програма виводить повний список товарів у кошику, з кількістю та сумою:
+
+№  НАЗВА                 ЦІНА  КІЛЬКІСТЬ  ВАРТІСТЬ
+1  Печиво "Весна"        14    1          14
+2  Молоко пастеризоване  12    2          24
+РАЗОМ ДО CПЛАТИ: 38
+
+Це реалізовано методом showFinalBill():
+
+213 foreach ($this->cart as $item) {
+214    $value = $item['price'] * $item['quantity'];
+215    $total += $value;
+216    printf("%-2d %s %-5d %-10d %-9d\n", $i, $item['name'], $item['price'], $item['quantity'], $value);
+218    $i++;
+219 }
+220 printf("РАЗОМ ДО CПЛАТИ: %d\n\n", $total);
+
+Команда «3» дозволяє користувачу ввести своє ім’я та вік. Програма перевіряє коректність:
+
+Ваше імʼя: Іван
+Ваш вік: 20
+
+У коді перевірка виглядає так:
+
+239 if (empty($name) || !preg_match('/[a-zA-Zа-яА-ЯіІїЇєЄґҐ]/u', $name)) {
+240    print "ПОМИЛКА! Імʼя може містити лише літери...\n";
+241 }
+242
+243 if (!is_numeric($age) || $age < 7 || $age > 150) {
+244    print "ПОМИЛКА! Користувач повинен мати вік від 7 до 150 років\n";
+245 }
+
+Програма реагує на некоректні введення:
+•	Неправильна команда:
+Введіть команду: 5
+ПОМИЛКА! Введіть правильну команду
+•	Неправильний номер товару:
+Виберіть товар: 10
+ПОМИЛКА! ВКАЗАНО НЕПРАВИЛЬНИЙ НОМЕР ТОВАРУ
+•	Некоректна кількість:
+Введіть кількість, штук: -5
+ПОМИЛКА! Ви вказали неправильну кількість товару
+
+
+Усі функції програми пов’язані між собою через основний цикл run() і забезпечують безперервну взаємодію з користувачем, доки він не завершить роботу через команду «0». 
+ВИСНОВОК
+
+У результаті виконання лабораторної роботи було розроблено консольний застосунок мовою PHP, який імітує роботу продовольчого магазину «Весна». Програма надає зручний інтерфейс для користувача через термінал, дозволяючи переглядати список товарів, додавати їх у кошик, змінювати кількість, видаляти позиції, переглядати підсумковий рахунок та налаштовувати свій профіль.
+Під час реалізації особливу увагу було приділено перевірці правильності введених даних, коректному форматуванню виводу, а також логіці обробки різних дій користувача. Програма забезпечує зворотній зв’язок у випадку помилкових введень, що покращує зручність взаємодії та надійність роботи. 
+ВИКОРИСТАНІ ДЖЕРЕЛА
+
+1.	PHP Manual. Офіційна документація PHP, яка містить приклади використання базових функцій, зокрема fgets(), trim(), is_numeric() та printf(). URL: https://www.php.net/manual/en/ (дата звернення: 10.04.2025).
+2.	Stack Overflow. Онлайн-спільнота програмістів, яка допомогла знайти рішення щодо перевірки введення, форматування виводу та обробки UTF-8 рядків у PHP. URL: https://stackoverflow.com (дата звернення: 10.04.2025).
+3.	Multibyte String Functions — PHP Manual. Розділ документації PHP, що пояснює способи роботи з багатобайтовими рядками, зокрема для коректного підрахунку довжини рядків у UTF-8. URL: https://www.php.net/manual/en/ref.mbstring.php (дата звернення: 10.04.2025).
+4.	W3Schools PHP Tutorial. Інтерактивний довідник із прикладами використання умов, циклів, масивів та функцій у PHP. URL: https://www.w3schools.com/php/ (дата звернення: 10.04.2025).
+ 
+ДОДАТОК А. КОД ПРОГРАМИ
+1.	#!/usr/bin/env php
+2.	<?php
+3.	
+4.	class SpringStore
+5.	{
+6.	    private $products = [];
+7.	    private $cart = [];
+8.	    private $userName = '';
+9.	    private $userAge = 0;
+10.	
+11.		public function __construct()
+12.	    {
+13.	        $this->loadProductsFromFile('products-php-task3.txt');
+14.	    }
+15.		
+16.		private function loadProductsFromFile($filename)
+17.	    {
+18.	        if (!file_exists($filename)) {
+19.	            print "ПОМИЛКА! Файл з товарами не знайдено.\n";
+20.	            exit(1);
+21.	        }
+22.	
+23.	        $json = file_get_contents($filename);
+24.	        $data = json_decode($json, true);
+25.	
+26.	        if ($data === null || !is_array($data)) {
+27.	            print "ПОМИЛКА! Неможливо розпарсити файл товарів.\n";
+28.	            exit(1);
+29.	        }
+30.	
+31.	        $this->products = $data;
+32.	    }
+33.	
+34.	    public function run()
+35.	    {
+36.	        while (true) {
+37.	            $this->showMainMenu();
+38.	            $command = trim(fgets(STDIN));
+39.	
+40.	            switch ($command) {
+41.	                case '0':
+42.	                    exit(0);
+43.	                case '1':
+44.	                    $this->selectProducts();
+45.	                    break;
+46.	                case '2':
+47.	                    $this->showFinalBill();
+48.	                    break;
+49.	                case '3':
+50.	                    $this->configureProfile();
+51.	                    break;
+52.	                default:
+53.	                    print "ПОМИЛКА! Введіть правильну команду\n";
+54.	                    $this->showMainMenuOptions();
+55.	                    break;
+56.	            }
+57.	        }
+58.	    }
+59.	
+60.	    private function showMainMenu()
+61.	    {
+62.	        print "\n################################\n";
+63.	        print "# ПРОДОВОЛЬЧИЙ МАГАЗИН \"ВЕСНА\" #\n";
+64.	        print "################################\n";
+65.	        $this->showMainMenuOptions();
+66.	    }
+67.	
+68.	    private function showMainMenuOptions()
+69.	    {
+70.	        print "1 Вибрати товари\n";
+71.	        print "2 Отримати підсумковий рахунок\n";
+72.	        print "3 Налаштувати свій профіль\n";
+73.	        print "0 Вийти з програми\n";
+74.	        print "Введіть команду: ";
+75.	    }
+76.	
+77.	    private function selectProducts()
+78.	    {
+79.	        while (true) {
+80.	            $this->showProductsList();
+81.	            print "Виберіть товар: ";
+82.	            $productNumber = trim(fgets(STDIN));
+83.	
+84.	            if ($productNumber === '0') {
+85.	                $this->showMainMenuOptions();
+86.	                return;
+87.	            }
+88.	
+89.	            if (!isset($this->products[$productNumber])) {
+90.	                print "ПОМИЛКА! ВКАЗАНО НЕПРАВИЛЬНИЙ НОМЕР ТОВАРУ\n\n";
+91.	                continue;
+92.	            }
+93.	
+94.	            $selectedProduct = $this->products[$productNumber];
+95.	            print "Вибрано: {$selectedProduct['name']}\n";
+96.	            print "Введіть кількість, штук: ";
+97.	            $quantity = trim(fgets(STDIN));
+98.	
+99.	            if (!is_numeric($quantity) || $quantity < 0 || $quantity >= 100) {
+100.	                print "ПОМИЛКА! Ви вказали неправильну кількість товару\n";
+101.	                $this->showCartStatus();
+102.	                continue;
+103.	            }
+104.	
+105.	            if ($quantity == 0) {
+106.	                if (isset($this->cart[$productNumber])) {
+107.	                    unset($this->cart[$productNumber]);
+108.	                }
+109.	                $this->showCartStatus();
+110.	            } else {
+111.	                $this->cart[$productNumber] = [
+112.	                    'name' => $selectedProduct['name'],
+113.	                    'price' => $selectedProduct['price'],
+114.	                    'quantity' => $quantity
+115.	                ];
+116.	                print "У КОШИКУ:";
+117.	                $this->showCart();
+118.	            }
+119.	        }
+120.	    }
+121.	
+122.	    private function showCartStatus()
+123.	    {
+124.	        if (empty($this->cart)) {
+125.	            print "КОШИК ПОРОЖНІЙ\n";
+126.	        } else {
+127.	            print "У КОШИКУ:\n";
+128.	            $this->showCart();
+129.	        }
+130.	    }
+131.	    
+132.	    private function showCart()
+133.	    {
+134.	        $nameWidth = 26;
+135.	        
+136.	        printf("\n%-{$nameWidth}s %-4s\n", "НАЗВА", "КІЛЬКІСТЬ");
+137.	        
+138.	        foreach ($this->cart as $item) {
+139.	            $name = $item['name'];
+140.	            $quantity = $item['quantity'];
+141.	            
+142.	            $nameLength = $this->utf8_strlen($name);
+143.	            
+144.	            $correct_value = $nameWidth - $nameLength;
+145.	            $correct_value -= 5;
+146.	            $padding = str_repeat(' ', max(0, $correct_value));
+147.	            
+148.	            printf("%s%s %-4d\n", $name, $padding, $quantity);
+149.	        }
+150.			
+151.			printf("\n");
+152.	    }
+153.	
+154.	    private function utf8_strlen($str)
+155.	    {
+156.	        $length = 0;
+157.	        $i = 0;
+158.	        while ($i < strlen($str)) {
+159.	            $char = ord($str[$i]);
+160.	            if ($char >= 128) {
+161.	                if (($char & 0xE0) == 0xC0) {
+162.	                    $i += 2;
+163.	                } elseif (($char & 0xF0) == 0xE0) {
+164.	                    $i += 3;
+165.	                } elseif (($char & 0xF8) == 0xF0) {
+166.	                    $i += 4;
+167.	                }
+168.	            } else {
+169.	                $i++;
+170.	            }
+171.	            $length++;
+172.	        }
+173.	        return $length;
+174.	    }
+175.	    
+176.	    private function showProductsList()
+177.	    {
+178.	        $nameWidth = 27;
+179.	    
+180.	        printf("%-2s %-{$nameWidth}s %-4s\n", "№", "НАЗВА", "ЦІНА");
+181.	    
+182.	        foreach ($this->products as $id => $product) {
+183.	            $name = $product['name'];
+184.	            $price = $product['price'];
+185.	    
+186.	            $nameLength = $this->utf8_strlen($name);
+187.	    
+188.	            $correct_value = $nameWidth - $nameLength;
+189.	            $correct_value -= 6;
+190.	            $padding = str_repeat(' ', max(0, $correct_value));
+191.	    
+192.	            printf("%-2d %-s%s %-4d\n", $id, $name, $padding, $price);
+193.	        }
+194.	    
+195.	        print "   -----------\n";
+196.	        print "0  ПОВЕРНУТИСЯ\n";
+197.	    }
+198.	
+199.	
+200.	    private function showFinalBill()
+201.	    {
+202.	        if (empty($this->cart)) {
+203.	            print "КОШИК ПОРОЖНІЙ. НІЧОГО КУПУВАТИ\n\n";
+204.	            $this->showMainMenuOptions();
+205.	            return;
+206.	        }
+207.	    
+208.	        print "№  НАЗВА                 ЦІНА  КІЛЬКІСТЬ  ВАРТІСТЬ\n";
+209.	        $total = 0;
+210.	        $i = 1;
+211.	        $nameWidth = 21;
+212.	    
+213.	        foreach ($this->cart as $item) {
+214.	            $name = $item['name'];
+215.	            $price = $item['price'];
+216.	            $quantity = $item['quantity'];
+217.	            $value = $price * $quantity;
+218.	            $total += $value;
+219.	            
+220.	            $nameLength = $this->utf8_strlen($name);
+221.	            
+222.	            $correct_value = $nameWidth - $nameLength;
+223.	            $padding = str_repeat(' ', max(0, $correct_value));
+224.	            
+225.	            printf("%-2d %s%s %-5d %-10d %-9d\n", $i, $name, $padding, $price, $quantity, $value);
+226.	            $i++;
+227.	        }
+228.	    
+229.	        printf("РАЗОМ ДО CПЛАТИ: %d\n\n", $total);
+230.	        $this->showMainMenuOptions();
+231.	    }
+232.	    
+233.	    private function configureProfile()
+234.	    {
+235.	        while (true) {
+236.	            print "Ваше імʼя: ";
+237.	            $name = trim(fgets(STDIN));
+238.	
+239.	            if (empty($name) || !preg_match('/[a-zA-Zа-яА-ЯіІїЇєЄґҐ]/u', $name)) {
+240.	                print "ПОМИЛКА! Імʼя може містити лише літери, апостроф «'», дефіс «-», пробіл\n\n";
+241.	                continue;
+242.	            }
+243.	
+244.	            $this->userName = $name;
+245.	            break;
+246.	        }
+247.	
+248.	        while (true) {
+249.	            print "Ваш вік: ";
+250.	            $age = trim(fgets(STDIN));
+251.	
+252.	            if (!is_numeric($age) || $age < 7 || $age > 150) {
+253.	                print "ПОМИЛКА! Користувач повинен мати вік від 7 та до 150 років\n\n";
+254.	                continue;
+255.	            }
+256.	
+257.	            $this->userAge = (int)$age;
+258.	            break;
+259.	        }
+260.	
+261.	        print "\nВаше імʼя: {$this->userName}\n";
+262.	        print "Ваш вік: {$this->userAge}\n\n";
+263.	        $this->showMainMenuOptions();
+264.	    }
+265.	}
+266.	
+267.	$springStore = new SpringStore();
+268.	$springStore->run();
