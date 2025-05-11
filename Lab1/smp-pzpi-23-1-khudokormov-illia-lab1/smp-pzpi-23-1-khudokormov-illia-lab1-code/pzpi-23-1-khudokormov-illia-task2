@@ -1,0 +1,365 @@
+#!/bin/bash
+
+# Configuration variables
+silent_mode=false
+academic_group=''
+input_file=''
+output_dir="${PWD}"
+
+# Constants for file patterns and error codes
+FILE_PATTERN='^TimeTable_.._.._20..\.csv$'
+ERR_NOT_FOUND=4
+ERR_NO_ACCESS=3
+
+#################################################
+# UTILITY FUNCTIONS
+#################################################
+
+timestamp() {
+  date +'%Y-%m-%dT%H:%M:%S%z'
+}
+
+log_error() {
+  echo "[$(timestamp)]: $*" >&2
+}
+
+print_message() {
+  $silent_mode || echo "$*"
+}
+
+#################################################
+# FILE OPERATIONS
+#################################################
+
+verify_file_access() {
+  local target_file="$1"
+  [[ ! -f "$target_file" ]] && return $ERR_NOT_FOUND
+  [[ ! -r "$target_file" ]] && return $ERR_NO_ACCESS
+  return 0
+}
+
+convert_encoding() {
+  sed 's/\r/\r\n/g' < "$1" | iconv -f cp1251 -t utf-8
+}
+
+write_output() {
+  local content="$1"
+  local filename="$2"
+
+  if $silent_mode; then
+    echo "$content" > "$filename"
+  else
+    tee "$filename" <<< "$content"
+  fi
+}
+
+#################################################
+# DATA PROCESSING
+#################################################
+
+extract_groups() {
+  gawk -vFPAT='[^,]*|"[^"]*"' 'NR!=1 {
+    gsub(/"/, "", $1)
+    if ($1 ~ / - /) {
+      split($1, g, " - ")
+      printf("%s\n", g[1])
+    }
+  }' | sort | uniq
+}
+
+process_data_with_group() {
+  local data="$1"
+  local group="$2"
+
+  gawk -vFPAT='[^,]*|"[^"]*"' -v group="$group" '
+    function format_date(date) {
+      gsub(/"/, "", date)
+      split(date, d, ".")
+      return sprintf("\"%02d/%02d/%04d\"", d[2], d[1], d[3])
+    }
+    function format_time(time) {
+      gsub(/"/, "", time)
+      split(time, t, ":")
+      if (t[1] == "00" && t[2] == "00" && t[3] == "00") return sprintf("\"%02d:%02d AM\"", t[1], t[2])
+      if (t[1] == "12" && t[2] == "00" && t[3] == "00") return sprintf("\"%02d:%02d PM\"", t[1], t[2])
+      if (t[1] >= 12) return sprintf("\"%02d:%02d PM\"", t[1] - 12, t[2])
+      return sprintf("\"%02d:%02d AM\"", t[1], t[2])
+    }
+    function trim_start(str, prefix) {
+      gsub("^" prefix, "", str)
+      return sprintf("\"%s", str)
+    }
+    NR!=1 && $1 ~ ("^\"" group " - ") {
+      $2 = format_date($2)
+      $3 = format_time($3)
+      $4 = format_date($4)
+      $5 = format_time($5)
+      $1 = trim_start($1, "\"" group " - ")
+      print $2, $3, $4, $5, $1, $12
+    }
+  ' OFS=',' <<< "$data" | sort
+}
+
+process_data_without_group() {
+  local data="$1"
+
+  gawk -vFPAT='[^,]*|"[^"]*"' '
+    function format_date(date) {
+      gsub(/"/, "", date)
+      split(date, d, ".")
+      return sprintf("\"%02d/%02d/%04d\"", d[2], d[1], d[3])
+    }
+    function format_time(time) {
+      gsub(/"/, "", time)
+      split(time, t, ":")
+      if (t[1] == "00" && t[2] == "00" && t[3] == "00") return sprintf("\"%02d:%02d AM\"", t[1], t[2])
+      if (t[1] == "12" && t[2] == "00" && t[3] == "00") return sprintf("\"%02d:%02d PM\"", t[1], t[2])
+      if (t[1] >= 12) return sprintf("\"%02d:%02d PM\"", t[1] - 12, t[2])
+      return sprintf("\"%02d:%02d AM\"", t[1], t[2])
+    }
+    NR!=1 {
+      $2 = format_date($2)
+      $3 = format_time($3)
+      $4 = format_date($4)
+      $5 = format_time($5)
+      print $2, $3, $4, $5, $1, $12
+    }
+  ' OFS=',' <<< "$data" | sort
+}
+
+format_for_calendar() {
+  local data="$1"
+
+  gawk -vFPAT='[^,]*|"[^"]*"' '
+    NR != 1 {
+      gsub(/"/, "", $5)
+      counter[$5]++
+      session_num = counter[$5]
+      if ($5 ~ /Лб/) {
+        session_num = int((session_num + 1) / 2)
+      }
+      $5 = "\"" $5 "; №" session_num "\""
+      print $5 "," $1 "," $2 "," $3 "," $4 "," $6
+    }
+  ' <<< "$data" | sort
+}
+
+#################################################
+# USER INTERFACE FUNCTIONS
+#################################################
+
+display_usage() {
+  cat << EOF
+Використання скрипта:
+$0 [ОПЦІЇ] [ГРУПА] [ФАЙЛ.csv]
+
+Опис:
+Цей скрипт перетворює CSV-файл з розкладом занять у формат,
+придатний для імпорту в Google Календар.
+
+Параметри:
+ГРУПА Назва академічної групи (за шаблоном)
+ФАЙЛ.csv Експортований CSV-файл розкладу занять
+
+Опції:
+-h, --help Показати цю довідку
+-v, --version Показати версію скрипта
+-q, --quiet Тихий режим (без виводу в термінал)
+
+Приклади використання:
+1. Звичайний режим з вибором файла:
+$0
+
+2. Вказати групу та файл:
+$0 "ПЗПІ-23-1" "TimeTable_ІП-84.csv"
+
+3. Тихий режим (результат тільки у файл):
+$0 -q "ПЗПІ-23-1" "TimeTable_ІП-84.csv"
+
+Результат роботи:
+Скрипт створює новий файл з іменем "Google_ФАЙЛ.csv" у поточній директорії.
+EOF
+}
+
+display_version() {
+  cat << EOF
+$0 - University Schedule to Google Calendar Converter
+Version: 1.0.0.0
+Features:
+- Converts CP1251 encoded CSV to UTF-8
+- Filters schedule by academic group
+- Formats dates/times for Google Calendar
+- Handles lab sessions with proper numbering
+EOF
+}
+
+choose_csv_file() {
+  local file_list=$(ls | grep "$FILE_PATTERN" | sort -u)
+
+  if [[ -z "$file_list" ]]; then
+    log_error "Не знайдено жодного файлу розкладу."
+    return 1
+  fi
+
+  local chosen_file
+  PS3="Оберіть файл розкладу або вийдіть: "
+  select chosen_file in $file_list 'Вийти'; do
+    case "$chosen_file" in
+      '')
+        print_message "Неправильний вибір. Спробуйте ще раз."
+        continue
+        ;;
+      'Вийти')
+        return 1
+        ;;
+      *)
+        echo "$chosen_file"
+        return 0
+        ;;
+    esac
+  done
+}
+
+pick_group() {
+  local available_groups="$1"
+
+  if [[ -z "$available_groups" ]]; then
+    print_message "Не знайдено жодної групи."
+    return 1
+  fi
+
+  local current_group
+  PS3="Оберіть групу або вийдіть: "
+  select current_group in $available_groups 'Завершити роботу'; do
+    case $current_group in
+      '')
+        print_message "Неправильний вибір. Спробуйте ще раз."
+        ;;
+      'Завершити роботу')
+        return 1
+        ;;
+      *)
+        echo "$current_group"
+        return 0
+        ;;
+    esac
+  done
+}
+
+#################################################
+# ARGUMENT HANDLING
+#################################################
+
+parse_arguments() {
+  local parsed_options
+  parsed_options=$(getopt -l "help,version,quiet" -o "hvq" -a -- "$@")
+
+  if [[ $? -ne 0 ]]; then
+    log_error "Помилка розбору параметрів!"
+    exit 1
+  fi
+
+  eval set -- "$parsed_options"
+
+  while true; do
+    case "$1" in
+      -h|--help)
+        display_usage
+        exit 0
+        ;;
+      -v|--version)
+        display_version
+        exit 0
+        ;;
+      -q|--quiet)
+        silent_mode=true
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        log_error "Невідомий параметр: $1"
+        exit 1
+        ;;
+    esac
+  done
+
+  # Handle positional arguments
+  if [[ $# -gt 0 ]]; then
+    if [[ $# -gt 1 ]]; then
+      academic_group="$1"
+      shift
+    fi
+    input_file="$1"
+  fi
+}
+
+#################################################
+# MAIN PROGRAM LOGIC
+#################################################
+
+main() {
+  parse_arguments "$@"
+
+  if [[ -z "$input_file" ]]; then
+    input_file=$(choose_csv_file)
+    [[ $? -ne 0 ]] && exit 0
+  fi
+
+  verify_file_access "$input_file"
+  case $? in
+    0)
+      ;;
+    $ERR_NO_ACCESS)
+      log_error "Файл $input_file недоступний для читання."
+      exit $ERR_NO_ACCESS
+      ;;
+    $ERR_NOT_FOUND)
+      log_error "Файл $input_file не знайдено."
+      exit $ERR_NOT_FOUND
+      ;;
+  esac
+
+  local csv_content
+  csv_content=$(convert_encoding "$input_file")
+
+  local available_groups
+  available_groups=$(extract_groups <<< "$csv_content")
+
+  if [[ -n "$available_groups" ]]; then
+    if [[ -n "$academic_group" ]] && ! echo "$available_groups" | grep -Fxq "$academic_group"; then
+      print_message "Група $academic_group відсутня у файлі."
+      academic_group=''
+    fi
+
+    if [[ -z "$academic_group" ]]; then
+      print_message "Оберіть групу для формування розкладу:"
+      academic_group=$(pick_group "$available_groups")
+      [[ $? -ne 0 ]] && exit 0
+    fi
+  else
+    academic_group=''
+  fi
+
+  print_message "$([ -z "$academic_group" ] && echo "Обробка файлу $input_file як призначеного для однієї групи..." || echo "Обробка файлу $input_file як призначеного для групи $academic_group...")"
+
+  local processed_data
+  if [[ -n "$academic_group" ]]; then
+    processed_data=$(process_data_with_group "$csv_content" "$academic_group")
+  else
+    processed_data=$(process_data_without_group "$csv_content")
+  fi
+
+  local final_output
+  final_output=$(format_for_calendar "$processed_data")
+  final_output=$'"Subject","Start Date","Start Time","End Date","End Time","Description"\n'"$final_output"
+
+  local output_filename="${output_dir}/Google_${input_file%.csv}.csv"
+  write_output "$final_output" "$output_filename"
+
+  $silent_mode || print_message "Створено файл: $output_filename"
+}
+
+main "$@"
