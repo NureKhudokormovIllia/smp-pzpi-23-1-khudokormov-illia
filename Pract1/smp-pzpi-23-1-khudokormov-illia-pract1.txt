@@ -1,0 +1,174 @@
+Міністерство освіти та науки України
+Харківський національний університет радіоелектроніки
+Кафедра програмної інженерії
+ЗВІТ
+ПРО ПРАКТИЧНУ РОБОТУ №1
+з дисципліни «Скриптові мови програмування»
+Виконав: Перевірив:
+ст. гр. ПЗПІ-23-1 ст. викл. каф. ПІ
+Худокормов І.В. Сокорчук І.П.
+Харків, 2025 р.
+1 ОПИС ВИМОГ
+1.1 Мета роботи
+Метою цього скрипта є побудова ASCII-графічного зображення ялинки
+на основі введених користувачем параметрів: загальної висоти (full_tree_height)
+та ширини снігової частини (snow_width). Скрипт перевіряє коректність
+введених параметрів та автоматично коригує значення у разі потреби.
+1.2 Хід роботи
+Скрипт починає роботу з перевірки вхідних параметрів. Користувач
+повинен передати два аргументи: full_tree_height – загальну висоту ялинки
+(мінімальне значення – 8). snow_width – ширину снігового шару.
+Якщо full_tree_height менше 8, скрипт завершує роботу з повідомленням
+про помилку:
+if [[ $full_tree_height -lt 8 ]]; then
+ echo "Error: Minimum tree height is 8" >&2
+ exit 1
+fi
+Далі обчислюється значення total_snow_width, яке залежить від висоти
+ялинки та парності числа
+snow_density=$((full_tree_height % 2 == 0 ? 3 : 2))
+total_snow_width=$((full_tree_height - auxiliary_part + snow_density))
+Якщо snow_width не відповідає обчисленому значенню total_snow_width,
+скрипт видає помилку:
+if [[ total_snow_width -ne $2 && total_snow_width -ne $(($2 - 1)) ]]; then
+ echo "Snow width for this tree size must be " $total_snow_width >&2
+ exit 1
+fi
+Після перевірки параметрів починається процес побудови ялинки.
+Верхівка ялинки складається з одного символу *, розташованого по
+центру:
+display_sequence $((calculated_tier + 1)) " "
+echo "*"
+Гілки ялинки формуються за допомогою функції generate_layer, яка
+малює рівні ялинки символами # і *, чергуючи їх:
+generate_layer(){
+ local layer_size=3
+ local tier_height=$1
+ local symbol_type=$2
+ while ((tier_height > 0)); do
+ display_sequence $tier_height ' '
+ ((tier_height--))
+ display_sequence layer_size $symbol_type
+ echo ""
+ ((layer_size += 2))
+ if [[ "$symbol_type" == "#" ]]; then
+ symbol_type="*"
+ else
+ symbol_type="#"
+ fi
+ done
+}
+Функція display_sequence допомагає виводити рядки необхідної довжини
+символами *, # або пробілами:
+display_sequence(){
+ local repeat_count=$1
+ local symbol=$2
+ local idx
+ for ((idx = 0; idx < repeat_count; idx++)); do
+ echo -n "$symbol"
+ done
+}
+Використовуючи ці функції, скрипт будує два рівні ялинки, змінюючи
+символи:
+until ((segment_count == 0)); do
+ if [[ segment_count -eq 1 && $((calculated_tier % 2)) -eq 1 ]]; then
+ symbol='*'
+ fi
+ generate_layer calculated_tier $symbol
+ ((segment_count--))
+Done
+Стовбур складається з двох рядків по три символи #, вирівняних по
+центру:
+for idx in 1 2; do
+ display_sequence calculated_tier " "
+ echo "###"
+done
+Нижня частина ялинки формується суцільною лінією символів *:
+display_sequence total_snow_width '*'
+echo ""
+ВИСНОВОК
+Розроблений Bash-скрипт динамічно будує ASCII-графіку ялинки на
+основі введених параметрів.
+Основні особливості:
+Скрипт перевіряє вхідні дані та не допускає некоректних значень.
+Висота ялинки має бути не менше 8, а ширина снігового шару відповідає
+розрахунковому значенню.
+Використання функцій generate_layer та display_sequence дозволяє зручно
+будувати рівні ялинки та інші елементи.
+Візуальна складова включає верхівку *, чергування # та * у гілках,
+стовбур ### та основу *.
+Цей підхід демонструє принципи роботи з аргументами командного
+рядка, перевірку вхідних даних і генерацію ASCII-графіки, що може бути
+застосоване для інших текстових візуалізацій у Bash.
+ВИКОРИСТАНІ ДЖЕРЕЛА
+1. BASH Programming - Introduction HOW-TO. Посібник, що надає
+введення в програмування на мові Bash, охоплюючи основні концепції та
+техніки. URL: https://tldp.org/HOWTO/Bash-Prog-Intro-HOWTO.html (дата
+звернення: 29.03.2025).
+2. Змінні. Розділ, присвячений використанню змінних у Bash,
+включаючи приклади та пояснення. URL: https://tldp.org/HOWTO/Bash-ProgIntro-HOWTO-5.html (дата звернення: 29.03.2025).
+3. Функції. Розділ, що детально описує створення та використання
+функцій у Bash, з прикладами коду. URL: https://tldp.org/HOWTO/Bash-ProgIntro-HOWTO-8.html (дата звернення: 29.03.2025).
+4. Advanced Bash-Scripting Guide. Поглиблений посібник з мистецтва
+написання скриптів на Bash, що охоплює широкий спектр тем від базових до
+просунутих. URL: https://tldp.org/LDP/abs/html/ (дата звернення: 29.03.2025).
+ДОДАТОК А. КОД ПРОГРАМИ
+#!/bin/bash
+display_sequence(){
+local repeat_count=$1
+local symbol=$2
+local idx
+for ((idx = 0; idx < repeat_count; idx++)); do
+echo -n "$symbol"
+done
+}
+generate_layer(){
+local layer_size=3
+local tier_height=$1
+local symbol_type=$2
+while ((tier_height > 0)); do
+display_sequence $tier_height ' '
+((tier_height--))
+display_sequence layer_size $symbol_type
+echo ""
+((layer_size += 2))
+if [[ "$symbol_type" == "#" ]]; then
+symbol_type="*"
+else
+symbol_type="#"
+fi
+done
+}
+segment_count=2
+base_section=2
+full_tree_height=$1
+if [[ $full_tree_height -lt 8 ]]; then
+echo "Error: Minimum tree height is 8" >&2
+exit 1
+fi
+auxiliary_part=4
+snow_density=$((full_tree_height % 2 == 0 ? 3 : 2))
+total_snow_width=$((full_tree_height - auxiliary_part + snow_density))
+if [[ total_snow_width -ne $2 && total_snow_width -ne $(($2 - 1)) ]]; then
+echo "Snow width for this tree size must be " $total_snow_width >&2
+exit 1
+fi
+calculated_tier=$(((full_tree_height - auxiliary_part) / 2))
+set -f
+display_sequence $((calculated_tier + 1)) " "
+echo "*"
+symbol='#'
+until ((segment_count == 0)); do
+if [[ segment_count -eq 1 && $((calculated_tier % 2)) -eq 1 ]]; then
+symbol='*'
+fi
+generate_layer calculated_tier $symbol
+((segment_count--))
+done
+for idx in 1 2; do
+display_sequence calculated_tier " "
+echo "###"
+done
+display_sequence total_snow_width '*'
+echo ""
+set +f
