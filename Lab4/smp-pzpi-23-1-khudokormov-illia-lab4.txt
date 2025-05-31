@@ -1,0 +1,1226 @@
+
+ 
+Міністерство освіти і науки України 
+ 
+ 
+ 
+Харківський національний університет радіоелектроніки 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Кафедра програмної інженерії 
+ 
+ 
+ 
+
+
+
+ 
+Звіт з лабораторної роботи №4
+з дисципліни «Скриптові мови програмування» 
+ 
+ 
+ 
+ 
+ 
+
+ 
+Виконав:                                                                              Перевірили: 
+гр.ПЗПІ-23-1                                                                       Сокорчук Ігор 
+Худокормов Ілля Владиславович                                     Петрович 
+ 
+ 
+ 
+
+
+Харків 2025 
+
+ЗАВДАННЯ 
+Розробити систему автентифікації та авторизації для веб-застосунку інтернет-магазину на основі попередньої лабораторної роботи. Основна мета - навчитися структурувати код, працювати з формами та реалізувати контроль доступу користувачів.
+Необхідно виконати три основні завдання:
+1.	Усунути дублювання коду шапки і підвалу сайту шляхом створення окремих файлів header.php та footer.php. Реалізувати систему маршрутизації через головний файл index.php з використанням конструкції switch-case.
+2.	Створити систему входу користувачів з формою логіна, перевіркою облікових даних через файли та обмеженням доступу для неавторизованих користувачів. Використовувати PHP-сесії для збереження стану авторизації.
+3.	Розробити сторінку профілю користувача з можливістю редагування персональних даних та завантаження фото. Реалізувати валідацію всіх введених даних на стороні сервера.
+Технічна реалізація включає роботу з HTTP-методами GET/POST, PHP-сесіями, завантаженням файлів через multipart/form-data та забезпеченням безпеки веб-застосунку.
+ 
+ХІД РОБОТИ
+1. Структура проекту
+•	index.php — головний контролер з маршрутизацією запитів
+•	database.php — налаштування та ініціалізація SQLite бази даних
+•	login.php — сторінка авторизації та реєстрації користувачів
+•	products.php — сторінка з каталогом товарів
+•	cart.php — сторінка кошика з можливістю керування товарами
+•	profile.php — сторінка профілю користувача з завантаженням фото
+•	page404.php — сторінка помилки для неавторизованих користувачів
+•	header.php, footer.php — шаблони для HTML структури
+•	customer_database_operations.php — функції для роботи з користувачами
+•	item_database_operations.php — функції для роботи з товарами та кошиком
+
+2. Основні етапи роботи
+2.1 Ініціалізація та налаштування (index.php)
+Налаштування сесій та директорій:
+$sessionPath = __DIR__ . '/sessions';
+$uploadsPath = __DIR__ . '/uploads';
+if (!file_exists($sessionPath)) mkdir($sessionPath, 0700, true);
+if (!file_exists($uploadsPath)) mkdir($uploadsPath, 0755, true);
+
+ini_set('session.save_path', $sessionPath);
+
+session_start();
+Підключення необхідних файлів:
+require_once('database.php'); 
+require_once('item_database_operations.php');
+require_once('customer_database_operations.php');
+Маршрутизація за GET параметрами:
+•	?signin — авторизація/реєстрація
+•	?item_bought — додавання товарів до кошика
+•	?item_removed — видалення товарів з кошика
+•	?account — управління профілем
+•	?cart — перегляд кошика та оплата
+
+2.2 База даних (database.php)
+// Таблиця користувачів
+CREATE TABLE customer (
+    customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    pass_hash TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    birth_date DATE,
+    profile_description TEXT
+)
+
+// Таблиця товарів
+CREATE TABLE item (
+    item_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+    item_title TEXT NOT NULL, 
+    item_picture TEXT NOT NULL,
+    item_cost REAL NOT NULL
+)
+
+// Зв'язкова таблиця кошика
+CREATE TABLE customer_item (
+    customer_id INTEGER NOT NULL, 
+    item_id INTEGER NOT NULL, 
+    amount INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY(customer_id, item_id),
+    FOREIGN KEY(customer_id) REFERENCES customer(customer_id),
+    FOREIGN KEY(item_id) REFERENCES item(item_id)
+)
+
+INSERT INTO item (item_title, item_picture, item_cost) VALUES 
+    ('Напій Coca-cola', './images/cola.jpg', 12),
+    ('Напій Fanta', './images/fanta.jpg', 9),
+    ('Напій Sprite', './images/sprite.png', 25),
+    ('Мінеральна вода', './images/water.jpg', 19),
+    ('Арахіс', './images/nuts.jpg', 2)
+
+2.3 Система авторизації (login.php)
+Функціонал:
+•	Єдина форма для входу та реєстрації
+•	Валідація довжини логіну та паролю (мінімум 2 символи)
+•	Автоматична реєстрація нових користувачів
+Обробка форми в index.php:
+case isset($_GET["signin"]):
+    if ($customer_id) {
+        // Вихід з системи
+        session_unset();
+        session_destroy();
+    } elseif ($_POST['customerName'] && $_POST['password']) {
+        $username = $_POST['customerName'];
+        $pass_hash = $_POST['password'];
+        
+        if (verifyCustomerExists($username)['found'] == 1) {
+            // Спроба входу
+            authenticateCustomer($username, $pass_hash);
+        } else {
+            // Автоматична реєстрація
+            createAccount($username, $pass_hash);
+        }
+    }
+ 
+2.4 Каталог товарів (products.php)
+Функціонал:
+•	Відображення всіх товарів у вигляді таблиці
+•	Поля для введення кількості товару
+•	Кнопка "Покласти у кошик" для додавання товарів
+Структура форми:
+<form method="POST" action="index.php?item_bought">
+    <table class="products-table">
+        <?php foreach (fetchAllItems() as $merchandise) { ?>
+        <tr>
+            <th><img src="<?php echo $merchandise['item_picture'] ?>"></th>
+            <th><?php echo $merchandise['item_title'] ?></th>
+            <th>
+                <input type="number" min="0" 
+                       name="amount[<?php echo $merchandise['item_id'] ?>]">
+            </th>
+            <th>$<?php echo $merchandise['item_cost'] ?></th>
+        </tr>
+        <?php } ?>
+    </table>
+    <input type="submit" value="Покласти у кошик">
+</form>
+ 
+2.5 Кошик покупок (cart.php)
+Функціонал:
+•	Відображення товарів у кошику з підрахунком сум
+•	Видалення окремих товарів
+•	Загальна сума замовлення
+•	Кнопки "Cancel" та "Pay"
+Обробка товарів у кошику:
+// Додавання/оновлення товарів
+foreach ($_POST['amount'] as $identifier => $amount) {
+    if ($amount > 0) {
+        checkItemInCart($identifier)[0]['found'] == 1
+            ? modifyCartItem($identifier, $amount)
+            : addItemToCart($identifier, $amount);
+    } elseif ($amount == 0) {
+        removeFromCart($identifier);
+    }
+}
+ 
+2.6 Профіль користувача (profile.php)
+Функціонал:
+•	Завантаження фото профілю
+•	Редагування особистої інформації
+•	Валідація даних (вік 18+, опис мінімум 50 символів)
+Завантаження файлів:
+if (isset($_FILES['profilefile'])) {
+    $extension = strtolower(pathinfo($_FILES['profilefile']['name'], PATHINFO_EXTENSION));
+    $allowedExtensions = ['png', 'jpg', 'jpeg', 'gif'];
+    
+    if (in_array($extension, $allowedExtensions)) {
+        $targetFile = $uploadsPath . DIRECTORY_SEPARATOR . $customer_id . '.' . $extension;
+        move_uploaded_file($_FILES['profilefile']['tmp_name'], $targetFile);
+    }
+}
+Валідація профілю:
+function updateCustomerProfile($firstName, $lastName, $birthDate, $description) {
+    $currentDate = new DateTime();
+    $userDate = new DateTime($birthDate);
+    $ageDifference = $currentDate->diff($userDate);
+    
+    if (strlen($firstName) <= 1 || strlen($lastName) <= 1 || 
+        $ageDifference->y < 18 || strlen($description) < 50) {
+        return false;
+    }
+    // Оновлення в базі даних...
+}
+ 
+2.7 Навігація та безпека
+Умовна навігація в header.php:
+<?php if (isset($_SESSION['customer_id'])): ?>
+    <!-- Навігація для авторизованих користувачів -->
+    <nav><a href="index.php?item_bought">Cart</a></nav>
+    <nav><a href="index.php?account">Profile</a></nav>
+<?php endif; ?>
+
+<nav>
+    <a href="index.php?signin">
+        <?php echo isset($_SESSION['customer_id']) ? 'Logout' : 'Login' ?>
+    </a>
+</nav>
+Захист сторінок:
+if (!$customer_id) {
+    require_once('page404.php');
+    break;
+}
+2.8 Функції для роботи з базою даних
+Операції з користувачами (customer_database_operations.php):
+•	createAccount() — створення нового користувача
+•	verifyCustomerExists() — перевірка існування користувача
+•	authenticateCustomer() — авторизація користувача
+•	updateCustomerProfile() — оновлення профілю
+•	fetchCustomerProfile() — отримання даних профілю
+Операції з товарами (item_database_operations.php):
+•	fetchAllItems() — отримання всіх товарів
+•	retrieveCartItems() — отримання товарів з кошика
+•	addItemToCart() — додавання товару до кошика
+•	modifyCartItem() — зміна кількості товару
+•	removeFromCart() — видалення товару з кошика
+•	calculateTotalAmount() — підрахунок загальної суми
+•	emptyCart() — очищення кошика після покупки
+ВИСНОВОК 
+У процесі виконання лабораторної роботи №4 було розроблено систему автентифікації та авторизації для веб-застосунку інтернет-магазину. Основні завдання, такі як структурування коду, робота з формами та контроль доступу, були успішно виконані. Для уникнення дублювання коду використано окремі файли header.php та footer.php. Маршрутизація реалізована через index.php з switch-case. Система входу включає форму логіна, перевірку даних через файли та обмеження доступу для неавторизованих користувачів. Використано PHP-сесії для збереження стану авторизації. Сторінка профілю дозволяє редагувати дані та завантажувати фото, з валідацією на стороні сервера. Технічна реалізація охоплює роботу з HTTP-методами, сесіями, завантаженням файлів та забезпечення безпеки. В результаті створено функціональну систему з чіткою структурою та ефективним управлінням доступом.
+ 
+ВИКОРИСТАНІ ДЖЕРЕЛА 
+1.	Матеріали про PHP / Матеріали лекцій з дисципліни / Скриптові мови програмування / dl.nure. URL: https://dl.nure.ua/mod/page/view.php?id=669238 (дата звернення: 31.05.2025)
+2.	PHP Sessions / php.net. URL: https://www.php.net/manual/en/book.session.php (дата звернення 31.05.2025)
+3.	PHP Form Validation / w3schools. URL: https://www.w3schools.com/php/php_form_validation.asp (дата звернення 31.05.2025)
+4.	Images / istockphoto. URL: https://www.istockphoto.com/ (дата звернення 31.05.25)
+5.	Документація SQLite для роботи з базами даних / php.net URL: https://www.php.net/manual/en/book.sqlite3.php (дата звернення 31.05.2025)
+ 
+ДОДАТОК А
+Відеозапис
+Відеозапис презентації результатів лабораторної роботи:
+https://youtu.be/VfQiuK0Yy6E
+Хронологічний опис відеозапису:
+00:00 – Демонстрація зробленого веб-сайту
+02:26 – Як ініціалізуються папки, база даних для коректної роботи веб-сайту
+03:44 – Огляд ініціалізації таблиць у database.php
+04:36 – Огляд функцій бази даних з продуктами item_database_operations.php
+07:27 – Огляд функцій бази даних з користувачем customer_database.operations.php
+11:08 – Як працюють url параметри у index.php, огляд функціоналу switch-case
+19:57 – Як створюються елементи у Products.php
+20:50 – Як створюються елементи у Cart.php
+21:18 – Як виглядають візуальні сторінки Footer.php, Header.php, Page404.php
+22:19 – Як працює Profile.php
+
+ 
+ДОДАТОК Б
+Графічні матеріали
+ 
+Рисунок 2.1 – Сторінка не авторізованного користувача
+
+ 
+Рисунок 2.2 – Сторінка авторизації/реєстрації
+ 
+Рисунок 2.3 – Помилка заповнення форми
+
+ 
+Рисунок 2.4 – Невірний пароль
+ 
+Рисунок 2.5 – Сторінка товарів
+
+ 
+Рисунок 2.6 – Сторінка кошику з товарами
+ 
+Рисунок 2.7 – Сторінка кошику без товарів
+
+ 
+Рисунок 2.8 – Сторінка профілю без заповнених полів
+ 
+ 
+Рисунок 2.9 – Сторінка профілю з невірним вводом
+
+ 
+Рисунок 2.10 – Сторінка профілю з усіма введеними даними
+
+
+
+ 
+ДОДАТОК В
+Програмний Код
+cart.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/cart.php
+1   <?php
+2   require_once('item_database_operations.php');
+3   $cartItems = retrieveCartItems();
+4   ?>
+5   <!DOCTYPE html>
+6   <html lang="en">
+7   <head>
+8       <meta charset="UTF-8">
+9       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+10      <title>Web Shop - Cart</title>
+11      <style>
+12          html, body {
+13              margin: 0;
+14              height: 100%;
+15              display: flex;
+16              flex-direction: column;
+17              font-family: Arial, sans-serif;
+18          }
+19          .cart-container {
+20              display: flex;
+21              justify-content: center;
+22              align-items: center;
+23              flex: 1;
+24              flex-direction: column;
+25          }
+26          .cart-table {
+27              border: 1px solid black;
+28              border-collapse: collapse;
+29          }
+30          .cart-table th {
+31              border: 1px solid black;
+32              padding: 3px;
+33          }
+34          .button-container {
+35              display: flex;
+36              flex-direction: row;
+37              margin-left: 150px;
+38          }
+39          .cart-button {
+40              margin: 10px;
+41          }
+42          .cart-link {
+43              text-decoration: none;
+44              color: black;
+45          }
+46          .empty-cart-message {
+47              display: flex;
+48              justify-content: center;
+49              align-items: center;
+50              flex: 1;
+51          }
+52      </style>
+53  </head>
+54  <body>
+55      <?php if (count($cartItems) > 0) { ?>
+56      <main class="cart-container">
+57          <form method="POST" action="index.php?item_removed">
+58              <table class="cart-table">
+59                  <tr>
+60                      <th>id</th>
+61                      <th>name</th>
+62                      <th>price</th>
+63                      <th>count</th>
+64                      <th>sum</th>
+65                      <th></th>
+66                  </tr>
+67                  <?php foreach ($cartItems as $item) { ?>
+68                  <tr>
+69                      <th><?php echo $item['item_id'] ?></th>
+70                      <th><?php echo $item['item_title'] ?></th>
+71                      <th><?php echo $item['item_cost'] ?></th>
+72                      <th><?php echo $item['amount'] ?></th>
+73                      <th><?php echo $item['total_cost'] ?></th>
+74                      <th>
+75                          <button type="submit" name="identifier" value="<?php echo $item['item_id'] ?>">Delete</button>
+76                      </th>
+77                  </tr>
+78                  <?php } ?>
+79                  <tr>
+80                      <th>Total</th>
+81                      <th></th>
+82                      <th></th>
+83                      <th></th>
+84                      <th><?php echo calculateTotalAmount() ?></th>
+85                      <th></th>
+86                  </tr>
+87              </table>
+88          </form>
+89          <form method="POST" action="index.php?cart" class="button-container">
+90              <button class="cart-button"><a class="cart-link" href="products.html">Cancel</a></button>
+91              <button class="cart-button" type="submit" name="purchase">Pay</button>
+92          </form>
+93      </main>
+94      <?php } else { ?>
+95      <main class="empty-cart-message">
+96          <a class="cart-link" href="products.html">Перейти до покупок</a>
+97      </main>
+98      <?php } ?>
+99  </body>
+100 </html>
+customer_database_operations.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/customer_database_operations.php
+1   <?php
+2   
+3   function createAccount($username, $pass_hash)
+4   {
+5       global $database;
+6       $query = $database->prepare('INSERT INTO customer (username, pass_hash) VALUES (:username, :pass_hash)');
+7       $query->bindParam(':username', $username);
+8       $query->bindParam(':pass_hash', $pass_hash);
+9       $query->execute();
+10      $customer_id = $database->lastInsertId();
+11      $_SESSION['customer_id'] = $customer_id;
+12  }
+13  
+14  function verifyCustomerExists($username)
+15  {
+16      global $database;
+17      $query = $database->prepare('SELECT EXISTS(SELECT 1 FROM customer WHERE username = :username) AS found');
+18      $query->bindParam(':username', $username);
+19      $query->execute();
+20      return $query->fetch(PDO::FETCH_ASSOC);
+21  }
+22  
+23  function authenticateCustomer($username, $pass_hash)
+24  {
+25      global $database;
+26      $query = $database->prepare('SELECT customer_id FROM customer WHERE username = :username AND pass_hash = :pass_hash');
+27      $query->bindParam(':username', $username);
+28      $query->bindParam(':pass_hash', $pass_hash);
+29      $query->execute();
+30      $data = $query->fetch(PDO::FETCH_ASSOC);
+31      if ($data) {
+32          $customer_id = $data['customer_id'];
+33          $_SESSION['customer_id'] = $customer_id;
+34      }
+35      return $data;
+36  }
+37  
+38  function updateCustomerProfile($firstName, $lastName, $birthDate, $description)
+39  {
+40      $currentDate = new DateTime();
+41      $userDate = new DateTime($birthDate);
+42      $ageDifference = $currentDate->diff($userDate);
+43      if (strlen($firstName) <= 1 || strlen($lastName) <= 1 || $ageDifference->y < 18 || strlen($description) < 50) {
+44          return false;
+45      }
+46      global $database;
+47      global $customer_id;
+48      $query = $database->prepare('UPDATE customer SET first_name = :first_name, last_name = :last_name, birth_date = :birth_date, profile_description = :profile_description WHERE customer_id = :customer_id');
+49      $query->bindParam(':customer_id', $customer_id);
+50      $query->bindParam(':first_name', $firstName);
+51      $query->bindParam(':last_name', $lastName);
+52      $query->bindParam(':birth_date', $birthDate);
+53      $query->bindParam(':profile_description', $description);
+54      $query->execute();
+55      return true;
+56  }
+57  
+58  function fetchCustomerProfile(){
+59      global $database;
+60      global $customer_id;
+61      $query = $database->prepare('SELECT first_name, last_name, birth_date, profile_description FROM customer WHERE customer_id = :customer_id');
+62      $query->bindParam(':customer_id', $customer_id);
+63      $query->execute();
+64      return $query->fetch(PDO::FETCH_ASSOC);
+65  }
+database.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/database.php
+1   <?php
+2   try {
+3       $database = new PDO('sqlite:shop.db');
+4       $database->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+5       
+6       $database->exec("CREATE TABLE IF NOT EXISTS customer (
+7           customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+8           username TEXT UNIQUE NOT NULL,
+9           pass_hash TEXT NOT NULL,
+10          first_name TEXT,
+11          last_name TEXT,
+12          birth_date DATE,
+13          profile_description TEXT
+14      )");
+15      
+16      $database->exec("CREATE TABLE IF NOT EXISTS item (
+17          item_id INTEGER PRIMARY KEY AUTOINCREMENT, 
+18          item_title TEXT NOT NULL, 
+19          item_picture TEXT NOT NULL,
+20          item_cost REAL NOT NULL
+21      )");
+22      
+23      $database->exec("CREATE TABLE IF NOT EXISTS customer_item (
+24          customer_id INTEGER NOT NULL, 
+25          item_id INTEGER NOT NULL, 
+26          amount INTEGER NOT NULL DEFAULT 1,
+27          PRIMARY KEY(customer_id, item_id),
+28          FOREIGN KEY(customer_id) REFERENCES customer(customer_id) ON DELETE CASCADE,
+29          FOREIGN KEY(item_id) REFERENCES item(item_id) ON DELETE CASCADE
+30      )");
+31      
+32      $count = $database->query("SELECT COUNT(*) FROM item")->fetchColumn();
+33      if ($count == 0) {
+34          $database->exec("INSERT INTO item (item_title, item_picture, item_cost) VALUES 
+35              ('Напій Coca-cola', './images/cola.jpg', 12),
+36              ('Напій Fanta', './images/fanta.jpg', 9),
+37              ('Напій Sprite', './images/sprite.png', 25),
+38              ('Мінеральна вода', './images/water.jpg', 19),
+39              ('Арахіс', './images/nuts.jpg', 2)");
+40      }
+41      
+42  } catch (PDOException $e) {
+43      die("Database error: " . $e->getMessage());
+44  }
+45  ?>
+footer.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/footer.php
+1   <style>
+2   .footer-container {
+3       border-top: 1px solid black;
+4   }
+5   .footer-content {
+6       display: flex;
+7       justify-content: center;
+8       align-items: center;
+9       padding: 10px 0;
+10      background-color: #f8f8f8;
+11      gap: 20px;
+12      height: 40px;
+13      font-family: Arial, sans-serif;
+14  }
+15  .footer-link {
+16      text-decoration: none;
+17      color: black;
+18      padding: 0 5px;
+19  }
+20  .footer-separator {
+21      color: #ccc;
+22  }
+23  </style>
+24  <div class="footer-container">
+25      <footer class="footer-content">
+26          <nav>
+27              <a href="index.php" class="footer-link">Home</a>
+28          </nav>
+29          <span class="footer-separator">|</span>
+30          <nav>
+31              <a href="index.php" class="footer-link">Products</a>
+32          </nav>
+33          <span class="footer-separator">|</span>
+34          <nav>
+35              <a href="index.php?item_bought=true" class="footer-link">Cart</a>
+36          </nav>
+37          <span class="footer-separator">|</span>
+38          <nav>
+39              <a href="#" class="footer-link">About us</a>
+40          </nav>
+41      </footer>
+42  </div>
+header.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/header.php
+1   <style>
+2   .header-container {
+3       display: flex;
+4       justify-content: space-around;
+5       align-items: center;
+6       padding: 10px 0;
+7       height: 40px;
+8       background-color: #f8f8f8;
+9       font-family: Arial, sans-serif;
+10      border-bottom: 1px solid black;
+11  }
+12  .header-nav {
+13      display: flex;
+14      align-items: center;
+15      gap: 8px;
+16  }
+17  .header-icon {
+18      width: 30px;
+19      height: 30px;
+20  }
+21  .header-link {
+22      text-decoration: none;
+23      color: black;
+24  }
+25  .header-separator {
+26      color: #000;
+27      padding: 0 15px;
+28  }
+29  </style>
+30  <header class="header-container">
+31      <nav class="header-nav">
+32          <img src="images/home_icon.png" class="header-icon">
+33          <a href="index.php" class="header-link">Home</a>
+34      </nav>
+35      <span class="header-separator">|</span>
+36  
+37      <nav class="header-nav">
+38          <img src="images/menu_icon.png" class="header-icon">
+39          <a href="index.php" class="header-link">Products</a>
+40      </nav>
+41      <span class="header-separator">|</span>
+42  
+43      <?php if (isset($_SESSION['customer_id'])): ?>
+44      <nav class="header-nav">
+45          <img src="images/shop_cart_icon.png" class="header-icon">
+46          <a href="index.php?item_bought" class="header-link">Cart</a>
+47      </nav>
+48      <span class="header-separator">|</span>
+49  
+50      <nav class="header-nav">
+51          <img src="images/profile_icon.png" class="header-icon">
+52          <a href="index.php?account" class="header-link">Profile</a>
+53      </nav>
+54      <span class="header-separator">|</span>
+55      <?php endif; ?>
+56  
+57      <nav class="header-nav">
+58          <img src="<?php echo isset($_SESSION['customer_id']) ? 'images/logout.png' : 'images/login.png' ?>" class="header-icon">
+59          <a href="index.php?signin" class="header-link">
+60              <?php echo isset($_SESSION['customer_id']) ? 'Logout' : 'Login' ?>
+61          </a>
+62      </nav>
+63  </header>
+
+index.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/index.php
+1   <?php
+2   
+3   $sessionPath = __DIR__ . '/sessions';
+4   $uploadsPath = __DIR__ . '/uploads';
+5   if (!file_exists($sessionPath)) mkdir($sessionPath, 0700, true);
+6   if (!file_exists($uploadsPath)) mkdir($uploadsPath, 0755, true);
+7   
+8   ini_set('session.save_path', $sessionPath);
+9   
+10  require_once('database.php'); 
+11  require_once('item_database_operations.php');
+12  require_once('customer_database_operations.php');
+13  
+14  session_start();
+15  
+16  $customer_id = $_SESSION['customer_id'] ?? null;
+17  
+18  switch (true) {
+19      case isset($_GET["item_bought"]):
+20          require_once('header.php');
+21          if (!$customer_id) {
+22              require_once('page404.php');
+23              break;
+24          }
+25          if (isset($_POST['amount'])) {
+26              foreach ($_POST['amount'] as $identifier => $amount) {
+27                  if ($amount !== "") {
+28                      $amount = (int)$amount;
+29                      if ($amount > 0) {
+30                          checkItemInCart($identifier)[0]['found'] == 1
+31                              ? modifyCartItem($identifier, $amount)
+32                              : addItemToCart($identifier, $amount);
+33                      } elseif ($amount == 0 && checkItemInCart($identifier)) {
+34                          removeFromCart($identifier);
+35                      }
+36                  }
+37              }
+38          }
+39          require_once('cart.php');
+40          break;
+41  
+42      case isset($_GET["item_removed"]):
+43          require_once('header.php');
+44          if (!$customer_id) {
+45              require_once('page404.php');
+46              break;
+47          }
+48          removeFromCart($_POST["identifier"]);
+49          require_once('cart.php');
+50          break;
+51  
+52      case isset($_GET["signin"]):
+53          if ($customer_id) {
+54              session_unset();
+55              session_destroy();
+56              require_once('header.php');
+57              require_once('login.php');
+58          } elseif ($_POST['customerName'] ?? false && $_POST['password'] ?? false) {
+59              $username = $_POST['customerName'];
+60              $pass_hash = $_POST['password'];
+61  
+62              if (strlen($username) <= 1 || strlen($pass_hash) <= 1) {
+63                  $dataSuccess = false;
+64                  require_once('header.php');
+65                  require_once('login.php');
+66                  break;
+67              }
+68  
+69              if (verifyCustomerExists($username)['found'] == 1) {
+70                  if (authenticateCustomer($username, $pass_hash)) {
+71                      require_once('header.php');
+72                      require_once('products.php');
+73                  } else {
+74                      $passwordSuccess = false;
+75                      require_once('header.php');
+76                      require_once('login.php');
+77                  }
+78              } else {
+79                  createAccount($username, $pass_hash);
+80                  require_once('header.php');
+81                  require_once('products.php');
+82              }
+83          } else {
+84              require_once('header.php');
+85              require_once('login.php');
+86          }
+87          break;
+88  
+89      case isset($_GET["account"]):
+90          require_once('header.php');
+91          if (!$customer_id) {
+92              require_once('page404.php');
+93              break;
+94          }
+95          if (isset($_FILES['profilefile']) && $_FILES['profilefile']['name'] != "") {
+96              $extension = strtolower(pathinfo($_FILES['profilefile']['name'], PATHINFO_EXTENSION));
+97              $allowedExtensions = ['png', 'jpg', 'jpeg', 'gif'];
+98              
+99              if (!in_array($extension, $allowedExtensions)) {
+100                 $uploadError = "Invalid file type. Only PNG, JPG, JPEG, GIF are allowed.";
+101             } else {
+102                 $targetFile = $uploadsPath . DIRECTORY_SEPARATOR . $customer_id . '.' . $extension;
+103                 $existingFiles = glob($uploadsPath . DIRECTORY_SEPARATOR . $customer_id . '.*');
+104                 
+105                 if (!empty($existingFiles)) {
+106                     foreach ($existingFiles as $file) {
+107                         if (file_exists($file)) {
+108                             unlink($file);
+109                         }
+110                     }
+111                 }
+112                 
+113                 if (move_uploaded_file($_FILES['profilefile']['tmp_name'], $targetFile)) {
+114                     $uploadSuccess = true;
+115                 } else {
+116                     $uploadError = "Failed to upload file. Please try again.";
+117                 }
+118             }
+119         } else if (isset($_POST['firstName'])) {
+120             $changeSuccess = updateCustomerProfile(
+121                 $_POST['firstName'],
+122                 $_POST['lastName'],
+123                 $_POST['birthDate'],
+124                 $_POST['description']
+125             );
+126         }
+127         require_once('profile.php');
+128         break;
+129 
+130     case isset($_GET["cart"]):
+131         require_once('header.php');
+132         if (!$customer_id) {
+133             require_once('page404.php');
+134             break;
+135         }
+136         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['purchase'])) {
+137             emptyCart($customer_id);
+138             header('Location: index.php?cart');
+139             exit;
+140         }
+141         require_once('cart.php');
+142         break;
+143 
+144     default:
+145         require_once('header.php');
+146         if ($customer_id) {
+147             require_once('products.php');
+148         } else {
+149             require_once('page404.php');
+150         }
+151 }
+152 
+153 require_once('footer.php');
+154 exit;
+155 ?>
+item_database_operations.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/item_database_operations.php
+1   <?php
+2   
+3   function modifyCartItem($identifier, $amount)
+4   {
+5       global $database;
+6       global $customer_id;
+7       $query = $database->prepare('UPDATE customer_item SET amount = :amount WHERE customer_id = :customer_id AND item_id = :item_id');
+8       $query->bindParam(':customer_id', $customer_id);
+9       $query->bindParam(':item_id', $identifier);
+10      $query->bindParam(':amount', $amount);
+11      $query->execute();
+12  }
+13  
+14  function fetchAllItems()
+15  {
+16      global $database;
+17      $query = $database->query('SELECT * FROM item');
+18      return $query->fetchAll(PDO::FETCH_ASSOC);
+19  }
+20  
+21  function retrieveCartItems()
+22  {
+23      global $database;
+24      global $customer_id;
+25      $query = $database->prepare('
+26      SELECT 
+27          ci.item_id, 
+28          i.item_title, 
+29          i.item_cost, 
+30          ci.amount, 
+31          i.item_cost * ci.amount AS total_cost 
+32      FROM customer_item ci 
+33      LEFT JOIN item i
+34      ON i.item_id = ci.item_id
+35      WHERE ci.customer_id = :customer_id');
+36      $query->bindParam(':customer_id', $customer_id);
+37      $query->execute();
+38      return $query->fetchAll(PDO::FETCH_ASSOC);
+39  }
+40  
+41  function calculateTotalAmount(){
+42      global $database;
+43      global $customer_id;
+44      $query = $database->prepare('SELECT SUM(i.item_cost * ci.amount) AS total_sum 
+45          FROM customer_item ci 
+46          LEFT JOIN item i
+47          ON ci.item_id = i.item_id
+48          WHERE ci.customer_id = :customer_id');
+49      $query->bindParam(':customer_id', $customer_id);
+50      $query->execute();
+51      return $query->fetch(PDO::FETCH_COLUMN);
+52  }
+53  
+54  function addItemToCart($identifier, $amount)
+55  {
+56      global $database;
+57      global $customer_id;
+58      $query = $database->prepare('INSERT INTO customer_item (customer_id, item_id, amount) VALUES (:customer_id, :item_id, :amount)');
+59      $query->bindParam(':customer_id', $customer_id);
+60      $query->bindParam(':item_id', $identifier);
+61      $query->bindParam(':amount', $amount);
+62      $query->execute();
+63  }
+64  
+65  function removeFromCart($identifier)
+66  {
+67      global $database;
+68      global $customer_id;
+69      $query = $database->prepare('DELETE FROM customer_item WHERE customer_id = :customer_id AND item_id = :item_id');
+70      $query->bindParam(':customer_id', $customer_id);
+71      $query->bindParam(':item_id', $identifier);
+72      $query->execute();
+73  }
+74  
+75  function emptyCart($customer_id) {
+76      global $database;
+77      $query = $database->prepare('DELETE FROM customer_item WHERE customer_id = :customer_id');
+78      $query->bindParam(':customer_id', $customer_id);
+79      $query->execute();
+80  }
+81  
+82  function checkItemInCart($identifier)
+83  {
+84      global $database;
+85      global $customer_id;
+86      $query = $database->prepare('SELECT EXISTS(SELECT 1 FROM customer_item WHERE customer_id = :customer_id AND item_id = :item_id) AS found');
+87      $query->bindParam(':customer_id', $customer_id);
+88      $query->bindParam(':item_id', $identifier);
+89      $query->execute();
+90      $result = $query->fetchAll(PDO::FETCH_ASSOC);
+91      return $result;
+92  }
+login.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/login.php
+1   <!DOCTYPE html>
+2   <html lang="en">
+3   <head>
+4       <meta charset="UTF-8">
+5       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+6       <title>Web Shop - Login</title>
+7       <style>
+8           html, body {
+9               margin: 0;
+10              height: 100%;
+11              display: flex;
+12              flex-direction: column;
+13          }
+14          .login-form {
+15              display: flex;
+16              align-items: center;
+17              justify-content: center;
+18              flex: 1;
+19              flex-direction: column;
+20          }
+21          .login-input {
+22              font-size: 24px;
+23              height: 50px;
+24              width: 400px;
+25              margin: 10px;
+26              padding: 5px;
+27          }
+28          .login-input::placeholder {
+29              font-size: 20px !important;
+30              font-family: Arial, sans-serif;
+31              color: black;
+32          }
+33          .login-submit {
+34              font-size: 24px;
+35              margin-left: 150px;
+36              margin-top: 10px;
+37              width: 250px;
+38              padding: 5px;
+39          }
+40          .error-message {
+41              font-size: 30px;
+42              margin: 50px;
+43              color: red;
+44          }
+45          .hidden {
+46              visibility: collapse;
+47          }
+48          .visible {
+49              visibility: visible;
+50          }
+51      </style>
+52  </head>
+53  <body>
+54      <form method="POST" action="index.php?signin" class="login-form">
+55          <input type="text" name="customerName" placeholder="User Name" class="login-input">
+56          <input type="text" name="password" placeholder="Password" class="login-input">
+57          <input type="submit" value="Login / Register" class="login-submit">
+58          <p class="error-message <?php echo !isset($dataSuccess) || $dataSuccess ? 'hidden' : 'visible'?>">
+59              Логін і пароль повинні складатися з двох або більше символів
+60          </p>
+61          <p class="error-message <?php echo !isset($passwordSuccess) || $passwordSuccess ? 'hidden' : 'visible'?>">
+62              Пароль невірний
+63          </p>
+64      </form>
+65  </body>
+66  </html>
+page404.php:
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/page404.php
+1   <!DOCTYPE html>
+2   <html lang="en">
+3   <head>
+4       <meta charset="UTF-8">
+5       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+6       <title>Web Shop - Page404</title>
+7       <style>
+8           html, body {
+9               margin: 0;
+10              height: 100%;
+11              display: flex;
+12              flex-direction: column;
+13              font-family: Arial, sans-serif;
+14          }
+15          .error-message {
+16              display: flex;
+17              align-items: center;
+18              justify-content: center;
+19              flex: 1;
+20          }
+21      </style>
+22  </head>
+23  <body>
+24      <h1 class="error-message">Login first to use web store!</h1>
+25  </body>
+26  </html>
+products.php: 
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/products.php
+1   <?php
+2   require_once('item_database_operations.php');
+3   ?>
+4   
+5   <!DOCTYPE html>
+6   <html lang="en">
+7   <head>
+8       <meta charset="UTF-8">
+9       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+10      <title>Web Shop - Products</title>
+11      <style>
+12          html, body {
+13              margin: 0;
+14              height: 100%;
+15              display: flex;
+16              flex-direction: column;
+17              font-family: Arial, sans-serif;
+18          }
+19          
+20          main {
+21              display: flex;
+22              flex: 1;
+23              justify-content: center;
+24              align-items: center;
+25          }
+26          
+27          .products-form {
+28              display: flex;
+29              flex-direction: column;
+30          }
+31          
+32          .products-table {
+33              width: auto;
+34              margin: 0 auto;
+35          }
+36          
+37          .products-table th {
+38              padding: 10px 20px;
+39              text-align: center;
+40          }
+41          
+42          .product-image {
+43              display: block;
+44              margin-left: auto;
+45              margin-right: auto;
+46              max-width: 100px;
+47              max-height: 100px;
+48          }
+49          
+50          .quantity-input {
+51              width: 150px;
+52              text-align: center;
+53          }
+54          
+55          .submit-button {
+56              margin-left: auto;
+57              margin-top: 20px;
+58              height: 30px;
+59          }
+60      </style>
+61  </head>
+62  
+63  <body>
+64      <main>
+65          <form method="POST" action="index.php?item_bought" class="products-form">
+66              <table class="products-table">
+67                  <?php foreach (fetchAllItems() as $merchandise) { ?>
+68                  <tr>
+69                      <th>
+70                          <img src="<?php echo $merchandise['item_picture'] ?>" class="product-image">
+71                      </th>
+72                      <th><?php echo $merchandise['item_title'] ?></th>
+73                      <th>
+74                          <input type="number" min="0" name="amount[<?php echo $merchandise['item_id'] ?>]" class="quantity-input">
+75                      </th>
+76                      <th>$<?php echo $merchandise['item_cost'] ?></th>
+77                  </tr>
+78                  <?php } ?>
+79              </table>
+80              <input type="submit" class="submit-button" value="Покласти у кошик">
+81          </form>
+82      </main>
+83  </body>
+84  </html>
+profile.php: 
+GitHub репозиторій: https://github.com/NureKhudokormovIllia/smp-pzpi-23-1-khudokormov-illia/blob/master/Lab4/smp-pzpi-23-1-khudokormov-illia-lab4-code/profile.php
+1   <!DOCTYPE html>
+2   <html lang="en">
+3   <head>
+4       <meta charset="UTF-8">
+5       <meta name="viewport" content="width=device-width, initial-scale=1.0">
+6       <title>Web Shop - Profile</title>
+7       <style>
+8           html, body {
+9               margin: 0;
+10              height: 100%;
+11              display: flex;
+12              flex-direction: column;
+13              font-family: Arial, sans-serif;
+14          }
+15          
+16          .profile-container {
+17              display: flex;
+18              flex: 1;
+19              align-items: center;
+20              justify-content: center;
+21          }
+22          
+23          .profile-form {
+24              display: flex;
+25          }
+26          
+27          .image-section {
+28              display: flex;
+29              flex: 1;
+30              flex-direction: column;
+31          }
+32          
+33          .profile-image {
+34              width: 500px;
+35          }
+36          
+37          .file-input {
+38              display: none;
+39          }
+40          
+41          .upload-button {
+42              height: 50px;
+43          }
+44          
+45          .info-section {
+46              display: flex;
+47              flex: 3;
+48              flex-direction: column;
+49          }
+50          
+51          .input-row {
+52              display: flex;
+53              flex-direction: row;
+54          }
+55          
+56          .profile-input {
+57              font-size: 24px;
+58              margin: 50px;
+59              padding: 5px;
+60          }
+61          
+62          .profile-input::placeholder {
+63              font-size: 20px;
+64              font-family: Arial, sans-serif;
+65              color: black;
+66          }
+67          
+68          .description-textarea {
+69              font-size: 24px;
+70              margin: 50px;
+71              height: 300px;
+72              margin-right: 50px;
+73              resize: none;
+74              padding: 5px;
+75          }
+76          
+77          .error-message {
+78              font-size: 30px;
+79              margin: 50px;
+80              color: red;
+81          }
+82          
+83          .success-message {
+84              font-size: 30px;
+85              margin: 50px;
+86              color: green;
+87          }
+88          
+89          .save-button {
+90              font-size: 24px;
+91              margin-left: 900px;
+92              padding: 10px;
+93              margin-right: 50px;
+94          }
+95          
+96          .hidden {
+97              visibility: collapse;
+98          }
+99          
+100         .visible {
+101             visibility: visible;
+102         }
+103     </style>
+104 </head>
+105 
+106 <body>
+107     <div class="profile-container">
+108         <form method="POST" enctype="multipart/form-data" action="index.php?account" class="profile-form">
+109             <div class="image-section">
+110                 <img src="<?php 
+111                     $profilePic = glob('uploads/' . $customer_id . '.*'); 
+112                     echo empty($profilePic) ? "images/placeholder_icon.png" : $profilePic[0]; 
+113                 ?>" class="profile-image">
+114                 <input id="profilefile" type="file" name="profilefile" class="file-input" accept="image/*" onchange="this.form.submit()" />
+115                 <button onclick="document.getElementById('profilefile').click()" class="upload-button" type="button">
+116                     Upload
+117                 </button>
+118                 <?php if (isset($uploadSuccess) && $uploadSuccess): ?>
+119                     <p class="success-message">Profile picture uploaded successfully!</p>
+120                 <?php endif; ?>
+121                 <?php if (isset($uploadError)): ?>
+122                     <p class="error-message"><?php echo $uploadError; ?></p>
+123                 <?php endif; ?>
+124             </div>
+125             <div class="info-section">
+126                 <div class="input-row">
+127                     <?php $userProfile = fetchCustomerProfile(); ?>
+128                     <input type="text" 
+129                            value="<?php echo htmlspecialchars($userProfile['first_name'] ?? ''); ?>" 
+130                            name="firstName" 
+131                            placeholder="Name" 
+132                            class="profile-input">
+133                     <input type="text" 
+134                            value="<?php echo htmlspecialchars($userProfile['last_name'] ?? ''); ?>" 
+135                            name="lastName" 
+136                            placeholder="Surname" 
+137                            class="profile-input">
+138                     <input type="date" 
+139                            value="<?php echo $userProfile['birth_date'] ?? ''; ?>" 
+140                            name="birthDate" 
+141                            class="profile-input">
+142                 </div>
+143                 <textarea name="description" 
+144                           placeholder="Brief Description" 
+145                           class="description-textarea"><?php echo htmlspecialchars($userProfile['profile_description'] ?? ''); ?></textarea>
+146                 <p class="error-message <?php echo !isset($changeSuccess) || $changeSuccess ? 'hidden' : 'visible'; ?>">
+147                     Поля заповнені неправильно
+148                 </p>
+149                 <?php if (isset($changeSuccess) && $changeSuccess): ?>
+150                     <p class="success-message">Profile updated successfully!</p>
+151                 <?php endif; ?>
+152                 <input type="submit" value="Зберігти" class="save-button">
+153             </div>
+154         </form>
+155     </div>
+156 </body>
+157 </html>
